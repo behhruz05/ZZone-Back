@@ -13,7 +13,7 @@ const authorize = (...roles) => {
     }
     if (!roles.includes(req.user.role)) {
       return next(
-        new ApiError(403, `Access denied. Allowed roles: ${roles.join(', ')}`)
+        new ApiError(403, `Acceddddddss denied. Allowed roles: ${roles.join(', ')}`)
       );
     }
     next();
