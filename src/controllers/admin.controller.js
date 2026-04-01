@@ -83,6 +83,36 @@ const rejectProduct = async (req, res, next) => {
 
 // ─── Stores ───────────────────────────────────────────────────────────────────
 
+// POST /api/admin/stores  — admin creates a store for a specific seller
+// Body: { sellerId, name, description? }
+const createStoreForSeller = async (req, res, next) => {
+  try {
+    const { sellerId, name, description } = req.body;
+
+    if (!sellerId || !name) {
+      throw new ApiError(400, 'sellerId and name are required');
+    }
+
+    const seller = await User.findById(sellerId);
+    if (!seller) throw new ApiError(404, 'User not found');
+    if (seller.role !== 'SELLER') throw new ApiError(400, 'User is not a SELLER');
+
+    const exists = await Store.findOne({ seller: sellerId });
+    if (exists) throw new ApiError(409, 'This seller already has a store');
+
+    const store = await Store.create({
+      seller:   sellerId,
+      name:     name.trim(),
+      description: description ? description.trim() : undefined,
+      isActive: true,
+    });
+
+    res.status(201).json(new ApiResponse(201, { store }, 'Store created for seller'));
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /api/admin/stores  (optional ?isActive=true|false)
 const getAllStores = async (req, res, next) => {
   try {
@@ -117,6 +147,18 @@ const getAllStores = async (req, res, next) => {
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────
+
+// GET /api/admin/users  — sellers without a store (for store creation UI)
+const getSellers = async (req, res, next) => {
+  try {
+    const sellers = await User.find({ role: 'SELLER' }, 'name email _id createdAt');
+    const storeSellerIds = (await Store.find({}, 'seller')).map((s) => String(s.seller));
+    const withoutStore = sellers.filter((u) => !storeSellerIds.includes(String(u._id)));
+    res.json(new ApiResponse(200, { sellers: withoutStore }));
+  } catch (err) {
+    next(err);
+  }
+};
 
 // PATCH /api/admin/users/:id/balance
 // Body: { amount: number }  (positive to add, negative to deduct)
@@ -190,7 +232,9 @@ module.exports = {
   getPendingProducts,
   approveProduct,
   rejectProduct,
+  createStoreForSeller,
   getAllStores,
+  getSellers,
   updateUserBalance,
   getStats,
 };

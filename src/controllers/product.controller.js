@@ -23,14 +23,6 @@ const createProduct = async (req, res, next) => {
     const store = await Store.findOne({ seller: req.user._id });
     if (!store) throw new ApiError(404, 'Create a store first');
 
-    // Store must have an active subscription to list products
-    if (!store.isActive) {
-      throw new ApiError(
-        403,
-        'Your store subscription is inactive. Activate a plan to add products.'
-      );
-    }
-
     const { name, description, price, category } = req.body;
     // req.files comes from multer array upload
     const images = req.files ? req.files.map((f) => f.path) : [];
@@ -43,11 +35,11 @@ const createProduct = async (req, res, next) => {
       price,
       category,
       images,
-      // status defaults to PENDING — admin must approve
+      status: 'APPROVED',
     });
 
     res.status(201).json(
-      new ApiResponse(201, { product }, 'Product submitted for admin approval')
+      new ApiResponse(201, { product }, 'Product added successfully')
     );
   } catch (err) {
     next(err);

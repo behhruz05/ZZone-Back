@@ -5,7 +5,9 @@ const {
   getPendingProducts,
   approveProduct,
   rejectProduct,
+  createStoreForSeller,
   getAllStores,
+  getSellers,
   updateUserBalance,
   getStats,
 } = require('../controllers/admin.controller');
@@ -25,9 +27,11 @@ router.patch('/products/:id/approve',   approveProduct);
 router.patch('/products/:id/reject',    rejectProduct);
 
 // Store management
+router.post('/stores', createStoreForSeller);
 router.get('/stores', getAllStores);
 
-// User balance management (top-up for sellers)
+// User management
+router.get('/users', getSellers);
 router.patch('/users/:id/balance', updateUserBalance);
 
 module.exports = router;
