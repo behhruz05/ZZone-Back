@@ -15,7 +15,7 @@ const startSubscriptionCron = () => {
       const result = await Store.updateMany(
         {
           isActive:              true,
-          subscriptionExpiresAt: { $lt: new Date() }, // expired
+          subscriptionExpiresAt: { $ne: null, $lt: new Date() },
         },
         { $set: { isActive: false } }
       );

@@ -1,4 +1,5 @@
-const jwt   = require('jsonwebtoken');
+const jwt    = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body } = require('express-validator');
 
 const User        = require('../models/User');
@@ -26,10 +27,12 @@ const loginValidation = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const generateToken = (userId) =>
+const generateAccessToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn: process.env.JWT_EXPIRES_IN || '1h',
   });
+
+const generateRefreshToken = () => crypto.randomBytes(40).toString('hex');
 
 const safeUser = (user) => ({
   id:        user._id,
@@ -50,11 +53,17 @@ const register = async (req, res, next) => {
     const exists = await User.findOne({ email });
     if (exists) throw new ApiError(409, 'Email already registered');
 
-    const user  = await User.create({ name, email, password, role: role || 'CLIENT' });
-    const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken();
+    const user = await User.create({
+      name, email, password,
+      role:         role || 'CLIENT',
+      refreshToken,
+    });
+
+    const accessToken = generateAccessToken(user._id);
 
     res.status(201).json(
-      new ApiResponse(201, { token, user: safeUser(user) }, 'Registration successful')
+      new ApiResponse(201, { token: accessToken, refreshToken, user: safeUser(user) }, 'Registration successful')
     );
   } catch (err) {
     next(err);
@@ -66,8 +75,7 @@ const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // select:false on password — must explicitly include it
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password +refreshToken');
     if (!user || !(await user.comparePassword(password))) {
       throw new ApiError(401, 'Invalid email or password');
     }
@@ -75,11 +83,50 @@ const login = async (req, res, next) => {
       throw new ApiError(403, 'Sizning hisobingiz bloklangan. Admin bilan bog\'laning.');
     }
 
-    const token = generateToken(user._id);
+    const refreshToken    = generateRefreshToken();
+    user.refreshToken     = refreshToken;
+    await user.save();
+
+    const accessToken = generateAccessToken(user._id);
 
     res.json(
-      new ApiResponse(200, { token, user: safeUser(user) }, 'Login successful')
+      new ApiResponse(200, { token: accessToken, refreshToken, user: safeUser(user) }, 'Login successful')
     );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/refresh
+// Body: { refreshToken: string }
+const refresh = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) throw new ApiError(400, 'Refresh token required');
+
+    const user = await User.findOne({ refreshToken }).select('+refreshToken');
+    if (!user)          throw new ApiError(401, 'Invalid refresh token');
+    if (user.isBlocked) throw new ApiError(403, 'Sizning hisobingiz bloklangan');
+
+    const newRefreshToken = generateRefreshToken();
+    user.refreshToken     = newRefreshToken;
+    await user.save();
+
+    const accessToken = generateAccessToken(user._id);
+
+    res.json(
+      new ApiResponse(200, { token: accessToken, refreshToken: newRefreshToken }, 'Token refreshed')
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/auth/logout  (requires authenticate middleware)
+const logout = async (req, res, next) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
+    res.json(new ApiResponse(200, null, 'Logged out successfully'));
   } catch (err) {
     next(err);
   }
@@ -94,4 +141,4 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe, registerValidation, loginValidation };
+module.exports = { register, login, refresh, logout, getMe, registerValidation, loginValidation };

@@ -1,6 +1,7 @@
 const express         = require('express');
 const cors            = require('cors');
 const helmet          = require('helmet');
+const rateLimit       = require('express-rate-limit');
 const path            = require('path');
 const swaggerUi       = require('swagger-ui-express');
 const swaggerSpec     = require('./src/config/swagger');
@@ -17,6 +18,14 @@ const app = express();
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
+
+const authLimiter = rateLimit({
+  windowMs:        60 * 1000,
+  max:             10,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { success: false, message: 'Too many requests, try again in a minute' },
+});
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -42,7 +51,7 @@ app.get('/health', (req, res) => {
 });
 
 // ─── API routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth',     authRoutes);
+app.use('/api/auth',     authLimiter, authRoutes);
 app.use('/api/stores',   storeRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/admin',    adminRoutes);
