@@ -1,9 +1,2 @@
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-module.exports = cloudinary;
+// Not used — images stored via local disk + Railway Persistent Volume
+// See src/middleware/upload.js and UPLOAD_PATH env variable

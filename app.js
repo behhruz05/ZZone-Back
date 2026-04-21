@@ -2,6 +2,7 @@ const express         = require('express');
 const cors            = require('cors');
 const helmet          = require('helmet');
 const rateLimit       = require('express-rate-limit');
+const path            = require('path');
 const swaggerUi       = require('swagger-ui-express');
 const swaggerSpec     = require('./src/config/swagger');
 const errorHandler    = require('./src/middleware/errorHandler');
@@ -29,6 +30,15 @@ const authLimiter = rateLimit({
 // ─── Body parsers ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ─── Static file serving ─────────────────────────────────────────────────────
+// Local dev:  serves from back/Backend/uploads/
+// Railway:    serves from UPLOAD_PATH (persistent volume mount)
+const uploadsDir = process.env.UPLOAD_PATH || path.join(__dirname, 'uploads');
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(uploadsDir));
 
 // ─── Swagger UI ───────────────────────────────────────────────────────────────
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

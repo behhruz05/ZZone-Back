@@ -1,7 +1,25 @@
-const multer                  = require('multer');
-const { CloudinaryStorage }   = require('multer-storage-cloudinary');
-const cloudinary              = require('../config/cloudinary');
-const ApiError                = require('../utils/ApiError');
+const multer = require('multer');
+const path   = require('path');
+const fs     = require('fs');
+const crypto = require('crypto');
+
+const ApiError = require('../utils/ApiError');
+
+// ─── Upload root ───────────────────────────────────────────────────────────────
+// Local dev:  back/Backend/uploads/
+// Railway:    set UPLOAD_PATH=/app/uploads  (persistent volume mount point)
+const UPLOADS_ROOT = process.env.UPLOAD_PATH || path.join(__dirname, '../../uploads');
+
+const ensureDir = (dir) => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+};
+ensureDir(path.join(UPLOADS_ROOT, 'products'));
+ensureDir(path.join(UPLOADS_ROOT, 'logos'));
+
+// ─── Base URL ─────────────────────────────────────────────────────────────────
+// Local dev:  http://localhost:3000
+// Railway:    set BASE_URL=https://zzone-back-production-b0e9.up.railway.app
+const getBaseUrl = () => process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
 // ─── File filter ──────────────────────────────────────────────────────────────
 const fileFilter = (req, file, cb) => {
@@ -13,21 +31,20 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// ─── Cloudinary storage factory ───────────────────────────────────────────────
-// Files are uploaded directly to Cloudinary — no local disk involved.
-// Returns permanent HTTPS URLs that survive deploys.
-const makeCloudinaryStorage = (folder) =>
-  new CloudinaryStorage({
-    cloudinary,
-    params: {
-      folder:          `zzone/${folder}`,
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-      transformation:  [{ quality: 'auto', fetch_format: 'auto' }],
+// ─── Storage factory ──────────────────────────────────────────────────────────
+const makeStorage = (subfolder) =>
+  multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(UPLOADS_ROOT, subfolder)),
+    filename: (req, file, cb) => {
+      const ext  = path.extname(file.originalname).toLowerCase();
+      const name = `${subfolder.replace(/s$/, '')}-${crypto.randomBytes(16).toString('hex')}${ext}`;
+      cb(null, name);
     },
   });
 
 // ─── Multer wrapper ───────────────────────────────────────────────────────────
-const wrapMulter = (multerMiddleware) => (req, res, next) => {
+// Replaces filesystem path with a full public URL before reaching controllers.
+const wrapMulter = (multerMiddleware, subfolder) => (req, res, next) => {
   multerMiddleware(req, res, (err) => {
     if (err) {
       if (err instanceof ApiError)         return next(err);
@@ -36,12 +53,16 @@ const wrapMulter = (multerMiddleware) => (req, res, next) => {
       return next(new ApiError(400, err.message));
     }
 
-    // CloudinaryStorage sets file.path to the secure_url automatically.
-    if (req.files && Array.isArray(req.files)) {
-      req.files = req.files.map((f) => ({ ...f, path: f.path || f.secure_url }));
-    }
+    const base = getBaseUrl();
+
     if (req.file) {
-      req.file.path = req.file.path || req.file.secure_url;
+      req.file.path = `${base}/uploads/${subfolder}/${req.file.filename}`;
+    }
+    if (req.files && Array.isArray(req.files)) {
+      req.files = req.files.map((f) => ({
+        ...f,
+        path: `${base}/uploads/${subfolder}/${f.filename}`,
+      }));
     }
 
     next();
@@ -50,22 +71,22 @@ const wrapMulter = (multerMiddleware) => (req, res, next) => {
 
 // ─── Exported middleware ──────────────────────────────────────────────────────
 
-// Product images — up to 10, field name: "images", max 5 MB each
 const uploadProductImages = wrapMulter(
   multer({
-    storage:    makeCloudinaryStorage('products'),
+    storage:    makeStorage('products'),
     fileFilter,
     limits: { fileSize: 5 * 1024 * 1024 },
-  }).array('images', 10)
+  }).array('images', 10),
+  'products'
 );
 
-// Store logo — single file, field name: "logo", max 2 MB
 const uploadLogo = wrapMulter(
   multer({
-    storage:    makeCloudinaryStorage('logos'),
+    storage:    makeStorage('logos'),
     fileFilter,
     limits: { fileSize: 2 * 1024 * 1024 },
-  }).single('logo')
+  }).single('logo'),
+  'logos'
 );
 
 module.exports = { uploadProductImages, uploadLogo };
