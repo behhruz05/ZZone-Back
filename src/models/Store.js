@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 
 const storeSchema = new mongoose.Schema(
   {
-    // One store per seller (enforced by unique index)
     seller: {
       type:     mongoose.Schema.Types.ObjectId,
       ref:      'User',
@@ -21,32 +20,39 @@ const storeSchema = new mongoose.Schema(
       maxlength: [500, 'Description cannot exceed 500 characters'],
     },
     logo: {
-      type:    String, // local upload URL e.g. /uploads/logos/logo-<hex>.jpg
+      type:    String,
       default: null,
     },
-    // Active plan: null = no plan yet
+    // Social/contact links
+    contacts: {
+      phone:     { type: String, trim: true, default: null }, // e.g. +998901234567
+      telegram:  { type: String, trim: true, default: null }, // username without @
+      instagram: { type: String, trim: true, default: null }, // username without @
+      whatsapp:  { type: String, trim: true, default: null }, // phone number
+    },
     subscriptionPlan: {
       type:    String,
       enum:    ['TRIAL', 'BASIC', 'STANDARD', 'PREMIUM'],
       default: null,
     },
-    // When current subscription expires
     subscriptionExpiresAt: {
       type:    Date,
       default: null,
     },
-    // Only active stores can have visible products
     isActive: {
       type:    Boolean,
       default: false,
+    },
+    location: {
+      lat:     { type: Number, default: null },
+      lng:     { type: Number, default: null },
+      address: { type: String, trim: true, default: null },
     },
   },
   { timestamps: true }
 );
 
-// Indexes for cron job and filtering
-// Note: seller index is already created by unique:true in schema definition above
 storeSchema.index({ isActive: 1 });
-storeSchema.index({ subscriptionExpiresAt: 1 }); // Used by cron deactivation query
+storeSchema.index({ subscriptionExpiresAt: 1 });
 
 module.exports = mongoose.model('Store', storeSchema);

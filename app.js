@@ -1,8 +1,10 @@
-const express      = require('express');
-const cors         = require('cors');
-const helmet       = require('helmet');
-const path         = require('path');
-const errorHandler = require('./src/middleware/errorHandler');
+const express         = require('express');
+const cors            = require('cors');
+const helmet          = require('helmet');
+const path            = require('path');
+const swaggerUi       = require('swagger-ui-express');
+const swaggerSpec     = require('./src/config/swagger');
+const errorHandler    = require('./src/middleware/errorHandler');
 
 // ─── Route imports ────────────────────────────────────────────────────────────
 const authRoutes    = require('./src/routes/auth.routes');
@@ -13,7 +15,7 @@ const adminRoutes   = require('./src/routes/admin.routes');
 const app = express();
 
 // ─── Security ─────────────────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
@@ -23,7 +25,16 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ─── Static file serving (uploaded images) ────────────────────────────────────
 // Images are accessible at: GET /uploads/products/<filename>
 //                           GET /uploads/logos/<filename>
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
+// ─── Swagger UI ───────────────────────────────────────────────────────────────
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'ZZone API Docs',
+  swaggerOptions: { persistAuthorization: true },
+}));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

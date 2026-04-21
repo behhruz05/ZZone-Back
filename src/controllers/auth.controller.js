@@ -71,6 +71,9 @@ const login = async (req, res, next) => {
     if (!user || !(await user.comparePassword(password))) {
       throw new ApiError(401, 'Invalid email or password');
     }
+    if (user.isBlocked) {
+      throw new ApiError(403, 'Sizning hisobingiz bloklangan. Admin bilan bog\'laning.');
+    }
 
     const token = generateToken(user._id);
 

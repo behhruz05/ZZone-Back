@@ -81,33 +81,52 @@ const rejectProduct = async (req, res, next) => {
   }
 };
 
+// DELETE /api/admin/products/:id
+const deleteProduct = async (req, res, next) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) throw new ApiError(404, 'Product not found');
+
+    await Product.findByIdAndDelete(req.params.id);
+
+    res.json(new ApiResponse(200, null, 'Mahsulot o\'chirildi'));
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── Stores ───────────────────────────────────────────────────────────────────
 
-// POST /api/admin/stores  — admin creates a store for a specific seller
-// Body: { sellerId, name, description? }
+// POST /api/admin/stores  — admin creates a seller account + store in one step
+// Body: { sellerName, sellerEmail, sellerPassword, name, description? }
 const createStoreForSeller = async (req, res, next) => {
   try {
-    const { sellerId, name, description } = req.body;
+    const { sellerName, sellerEmail, sellerPassword, name, description } = req.body;
 
-    if (!sellerId || !name) {
-      throw new ApiError(400, 'sellerId and name are required');
+    if (!sellerName || !sellerEmail || !sellerPassword || !name) {
+      throw new ApiError(400, 'sellerName, sellerEmail, sellerPassword and name are required');
     }
 
-    const seller = await User.findById(sellerId);
-    if (!seller) throw new ApiError(404, 'User not found');
-    if (seller.role !== 'SELLER') throw new ApiError(400, 'User is not a SELLER');
+    const exists = await User.findOne({ email: sellerEmail.toLowerCase() });
+    if (exists) throw new ApiError(409, 'Bu email allaqachon ro\'yxatdan o\'tgan');
 
-    const exists = await Store.findOne({ seller: sellerId });
-    if (exists) throw new ApiError(409, 'This seller already has a store');
-
-    const store = await Store.create({
-      seller:   sellerId,
-      name:     name.trim(),
-      description: description ? description.trim() : undefined,
-      isActive: true,
+    const seller = await User.create({
+      name:     sellerName.trim(),
+      email:    sellerEmail.toLowerCase().trim(),
+      password: sellerPassword,
+      role:     'SELLER',
     });
 
-    res.status(201).json(new ApiResponse(201, { store }, 'Store created for seller'));
+    const store = await Store.create({
+      seller:      seller._id,
+      name:        name.trim(),
+      description: description ? description.trim() : undefined,
+      isActive:    true,
+    });
+
+    res.status(201).json(
+      new ApiResponse(201, { seller: { id: seller._id, name: seller.name, email: seller.email }, store }, 'Sotuvchi va do\'kon muvaffaqiyatli yaratildi')
+    );
   } catch (err) {
     next(err);
   }
@@ -148,34 +167,77 @@ const getAllStores = async (req, res, next) => {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-// GET /api/admin/users  — sellers without a store (for store creation UI)
+// GET /api/admin/users  — all users
 const getSellers = async (req, res, next) => {
   try {
-    const sellers = await User.find({ role: 'SELLER' }, 'name email _id createdAt');
-    const storeSellerIds = (await Store.find({}, 'seller')).map((s) => String(s.seller));
-    const withoutStore = sellers.filter((u) => !storeSellerIds.includes(String(u._id)));
-    res.json(new ApiResponse(200, { sellers: withoutStore }));
+    const { role, page = 1, limit = 50 } = req.query;
+    const filter = {};
+    if (role) filter.role = role;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [users, total] = await Promise.all([
+      User.find(filter, 'name email role balance isBlocked createdAt')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(Number(limit)),
+      User.countDocuments(filter),
+    ]);
+
+    res.json(new ApiResponse(200, {
+      users,
+      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
+    }));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PATCH /api/admin/users/:id/block
+const toggleBlockUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) throw new ApiError(404, 'User not found');
+    if (user.role === 'ADMIN') throw new ApiError(400, 'Admin hisobini bloklash mumkin emas');
+
+    user.isBlocked = !user.isBlocked;
+    await user.save();
+
+    res.json(new ApiResponse(200, { user: { _id: user._id, isBlocked: user.isBlocked } },
+      user.isBlocked ? 'Foydalanuvchi bloklandi' : 'Foydalanuvchi blokdan chiqarildi'
+    ));
   } catch (err) {
     next(err);
   }
 };
 
 // PATCH /api/admin/users/:id/balance
-// Body: { amount: number }  (positive to add, negative to deduct)
+// Body: { amount: number, mode?: 'add' | 'set' }
+// mode='add' (default): adds amount to current balance (can be negative to deduct)
+// mode='set': sets balance to exact amount
 const updateUserBalance = async (req, res, next) => {
   try {
-    const { amount } = req.body;
+    const { amount, mode = 'add' } = req.body;
 
     if (typeof amount !== 'number' || isNaN(amount)) {
-      throw new ApiError(400, 'amount must be a number');
+      throw new ApiError(400, "amount raqam bo'lishi kerak");
+    }
+    if (!['add', 'set'].includes(mode)) {
+      throw new ApiError(400, "mode 'add' yoki 'set' bo'lishi kerak");
     }
 
     const user = await User.findById(req.params.id);
-    if (!user) throw new ApiError(404, 'User not found');
+    if (!user) throw new ApiError(404, 'Foydalanuvchi topilmadi');
 
-    const newBalance = user.balance + amount;
-    if (newBalance < 0) {
-      throw new ApiError(400, `Cannot deduct ${Math.abs(amount)} — balance would go below 0`);
+    let newBalance;
+    if (mode === 'set') {
+      if (amount < 0) throw new ApiError(400, "Balans manfiy bo'lishi mumkin emas");
+      newBalance = amount;
+    } else {
+      newBalance = user.balance + amount;
+      if (newBalance < 0) {
+        throw new ApiError(400, `Yetarli balans yo'q. Joriy balans: ${user.balance.toLocaleString()} so'm`);
+      }
     }
 
     user.balance = newBalance;
@@ -184,8 +246,10 @@ const updateUserBalance = async (req, res, next) => {
     res.json(
       new ApiResponse(
         200,
-        { userId: user._id, newBalance: user.balance },
-        `Balance updated by ${amount}`
+        { userId: user._id, previousBalance: user.balance - (mode === 'add' ? amount : 0), newBalance: user.balance },
+        mode === 'set'
+          ? `Balans ${newBalance.toLocaleString()} so'mga o'rnatildi`
+          : `Balans ${amount >= 0 ? '+' : ''}${amount.toLocaleString()} so'm o'zgartirildi`
       )
     );
   } catch (err) {
@@ -228,13 +292,44 @@ const getStats = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/products  — all products with optional status filter
+const getAllProducts = async (req, res, next) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .populate('seller', 'name email')
+        .populate('store', 'name')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(Number(limit)),
+      Product.countDocuments(filter),
+    ]);
+
+    res.json(new ApiResponse(200, {
+      products,
+      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
+    }));
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getPendingProducts,
   approveProduct,
   rejectProduct,
+  deleteProduct,
+  getAllProducts,
   createStoreForSeller,
   getAllStores,
   getSellers,
+  toggleBlockUser,
   updateUserBalance,
   getStats,
 };

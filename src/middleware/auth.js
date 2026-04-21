@@ -18,6 +18,7 @@ const authenticate = async (req, res, next) => {
 
     const user = await User.findById(decoded.id);
     if (!user) throw new ApiError(401, 'User no longer exists');
+    if (user.isBlocked) throw new ApiError(403, 'Sizning hisobingiz bloklangan');
 
     req.user = user;
     next();
