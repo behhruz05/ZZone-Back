@@ -3,6 +3,7 @@ const Store       = require('../models/Store');
 const User        = require('../models/User');
 const ApiError    = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
+const { sendProductApproved, sendProductRejected } = require('../services/email.service');
 
 // ─── Products ─────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ const getPendingProducts = async (req, res, next) => {
 // PATCH /api/admin/products/:id/approve
 const approveProduct = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).populate('seller', 'email name');
     if (!product) throw new ApiError(404, 'Product not found');
     if (product.status !== 'PENDING') {
       throw new ApiError(400, `Product is already ${product.status}`);
@@ -49,6 +50,10 @@ const approveProduct = async (req, res, next) => {
     product.status          = 'APPROVED';
     product.rejectionReason = null;
     await product.save();
+
+    if (product.seller?.email) {
+      sendProductApproved(product.seller.email, product.name);
+    }
 
     res.json(new ApiResponse(200, { product }, 'Product approved'));
   } catch (err) {
@@ -65,7 +70,7 @@ const rejectProduct = async (req, res, next) => {
       throw new ApiError(400, 'Rejection reason is required');
     }
 
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).populate('seller', 'email name');
     if (!product) throw new ApiError(404, 'Product not found');
     if (product.status !== 'PENDING') {
       throw new ApiError(400, `Product is already ${product.status}`);
@@ -74,6 +79,10 @@ const rejectProduct = async (req, res, next) => {
     product.status          = 'REJECTED';
     product.rejectionReason = reason.trim();
     await product.save();
+
+    if (product.seller?.email) {
+      sendProductRejected(product.seller.email, product.name, reason.trim());
+    }
 
     res.json(new ApiResponse(200, { product }, 'Product rejected'));
   } catch (err) {

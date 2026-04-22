@@ -2,16 +2,20 @@ require('dotenv').config();
 
 const app       = require('./app');
 const connectDB = require('./src/config/db');
+const logger    = require('./src/config/logger');
 const { startSubscriptionCron } = require('./src/jobs/subscription.cron');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 const start = async () => {
   await connectDB();
   startSubscriptionCron();
   app.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+    logger.info({ port: PORT, env: process.env.NODE_ENV || 'development' }, 'Server started');
   });
 };
 
-start();
+start().catch((err) => {
+  logger.error(err, 'Failed to start server');
+  process.exit(1);
+});

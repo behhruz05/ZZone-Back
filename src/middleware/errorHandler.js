@@ -1,8 +1,5 @@
-/**
- * Global Express error handler.
- * Normalizes Mongoose, JWT, Multer, and custom ApiErrors into a unified shape.
- * Must be registered last in app.js (after all routes).
- */
+const logger = require('../config/logger');
+
 const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message    = err.message    || 'Internal Server Error';
@@ -45,11 +42,14 @@ const errorHandler = (err, req, res, next) => {
   if (err.code === 'LIMIT_FILE_SIZE')  { statusCode = 400; message = 'File size exceeds limit'; }
   if (err.code === 'LIMIT_FILE_COUNT') { statusCode = 400; message = 'Too many files uploaded';  }
 
+  if (statusCode >= 500) {
+    logger.error({ err, method: req.method, url: req.url }, 'Server error');
+  }
+
   res.status(statusCode).json({
     success: false,
     message,
     errors,
-    // Stack trace only in development
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
