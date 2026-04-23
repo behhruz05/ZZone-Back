@@ -7,10 +7,11 @@ const swaggerSpec     = require('./src/config/swagger');
 const errorHandler    = require('./src/middleware/errorHandler');
 
 // ─── Route imports ────────────────────────────────────────────────────────────
-const authRoutes    = require('./src/routes/auth.routes');
-const storeRoutes   = require('./src/routes/store.routes');
-const productRoutes = require('./src/routes/product.routes');
-const adminRoutes   = require('./src/routes/admin.routes');
+const authRoutes         = require('./src/routes/auth.routes');
+const storeRoutes        = require('./src/routes/store.routes');
+const productRoutes      = require('./src/routes/product.routes');
+const adminRoutes        = require('./src/routes/admin.routes');
+const autoListingsRoutes = require('./src/routes/autoListings.routes');
 
 const app = express();
 
@@ -42,10 +43,11 @@ app.get('/health', (req, res) => {
 });
 
 // ─── API routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth',     authLimiter, authRoutes);
-app.use('/api/stores',   storeRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/admin',    adminRoutes);
+app.use('/api/auth',          authLimiter, authRoutes);
+app.use('/api/stores',        storeRoutes);
+app.use('/api/products',      productRoutes);
+app.use('/api/admin',         adminRoutes);
+app.use('/api/auto-listings', autoListingsRoutes);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
